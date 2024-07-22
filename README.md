@@ -1,7 +1,7 @@
 # Akeyless-azure-lab
 A docker based Akeyless lab in Azure
 
-#Pre-requsite
+##Pre-requsite
 register for a free Akeyless account: console.akeyless.io
 Active Azure AD subscription:  you will need this to create VM
 
@@ -14,7 +14,7 @@ Access roles:  Authorize both the Azure AD auth method and your SAML to access i
 Linux or MacOS
 
 
-#Steps
+##Steps
 have your azure login info ready
 have your Akeyless SAML and gateawy access-ids ready
 Close the repo locally and run the azure install script
