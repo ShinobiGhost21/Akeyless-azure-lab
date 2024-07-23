@@ -112,8 +112,13 @@ output_file="docker-compose.yml"
 
 # Create the docker-compose.yml file using a heredoc
 cat << EOF > $output_file
+version: '3.8'
+networks:
+  akeyless-network:
 services:
   Akeyless-Gateway:
+    image: akeyless/base:latest-akeyless
+    container_name: akeyless-gateway
     ports:
       - 8000:8000
       - 8200:8200
@@ -121,63 +126,75 @@ services:
       - 8080:8080
       - 8081:8081
       - 5696:5696
-    container_name: akeyless-gateway
     environment:
       - CLUSTER_NAME=akeyless-lab
-      - ADMIN_ACCESS_ID=$ADMIN_ACCESS_ID
-      - 'ALLOWED_ACCESS_PERMISSIONS=[ {"name": "Administrators",
-        "access_id": "$SAML_ACCESS_ID", "permissions": ["admin"]}]'
-    image: akeyless/base:latest-akeyless
+      - ADMIN_ACCESS_ID=${ADMIN_ACCESS_ID}
+      - 'ALLOWED_ACCESS_PERMISSIONS=[ {"name": "Administrators", "access_id": "${SAML_ACCESS_ID}", "permissions": ["admin"]}]'
+    networks:
+      - akeyless-network
   Custom-Server:
+    image: akeyless/custom-server
+    container_name: custom-server
     ports:
       - 2608:2608
     volumes:
-      - \$PWD/custom_logic.sh:/custom_logic.sh
+      - $PWD/custom_logic.sh:/custom_logic.sh
     environment:
-      - GW_ACCESS_ID=$ADMIN_ACCESS_ID
+      - GW_ACCESS_ID=${ADMIN_ACCESS_ID}
     restart: unless-stopped
-    container_name: custom-server
-    image: akeyless/custom-server
+    networks:
+      - akeyless-network
   zero-trust-bastion:
+    image: akeyless/zero-trust-bastion:latest
     container_name: akeyless-lab-web-bastion
     ports:
       - 8888:8888
     environment:
       - AKEYLESS_GW_URL=https://rest.akeyless.io
-      - PRIVILEGED_ACCESS_ID=$ADMIN_ACCESS_ID
-      - ALLOWED_ACCESS_IDS=$SAML_ACCESS_ID
+      - PRIVILEGED_ACCESS_ID=${ADMIN_ACCESS_ID}
+      - ALLOWED_ACCESS_IDS=${SAML_ACCESS_ID}
       - CLUSTER_NAME=akeyless-lab-sra
     restart: unless-stopped
-    image: akeyless/zero-trust-bastion:latest
+    networks:
+      - akeyless-network
 #  ZTWA-Dispatcher:
 #    image: akeyless/zero-trust-web-dispatcher
 #    ports:
 #      - 9000:9000
 #      - 19414:19414
 #    volumes:
-#      - \$PWD/shared:/etc/shared
+#      - $PWD/shared:/etc/shared
 #    environment:
 #      - CLUSTER_NAME=akeyless-lab-sra
 #      - SERVICE_DNS=worker
 #      - AKEYLESS_GW_URL=https://rest.akeyless.io
-#      - PRIVILEGED_ACCESS_ID=$ADMIN_ACCESS_ID
-#      - ALLOWED_ACCESS_IDS=[$SAML_ACCESS_ID]
+#      - PRIVILEGED_ACCESS_ID=${ADMIN_ACCESS_ID}
+#      - ALLOWED_ACCESS_IDS=[${SAML_ACCESS_ID}]
 #      - ALLOW_INTERNAL_AUTH=false
 #      - DISABLE_SECURE_COOKIE=true
 #      - WEB_PROXY_TYPE=http
+#    networks:
+#      - akeyless-network
+
   postgresql:
+    image: bitnami/postgresql:latest
+    container_name: postgresql
     ports:
       - 5432:5432
     environment:
-      - POSTGRESQL_PASSWORD=$POSTGRESQL_PASSWORD
-      - POSTGRESQL_USERNAME=$POSTGRESQL_USERNAME
-    container_name: postgresql
-    image: bitnami/postgresql:latest
+      - POSTGRESQL_PASSWORD=${POSTGRESQL_PASSWORD}
+      - POSTGRESQL_USERNAME=${POSTGRESQL_USERNAME}
+    networks:
+      - akeyless-network
+
   grafana:
+    image: bitnami/grafana:latest
     container_name: grafana
     ports:
       - 3000:3000
-    image: bitnami/grafana:latest
+    networks:
+      - akeyless-network
+
 EOF
 
 echo "docker-compose.yml file has been generated at $output_file."
