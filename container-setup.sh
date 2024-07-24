@@ -1,8 +1,15 @@
 #!/bin/bash
 
-# Function to check if a command is installed
-is_installed() {
-    command -v $1 >/dev/null 2>&1
+# Function to check if a command is installed and install if necessary
+install_if_missing() {
+    local cmd=$1
+    local install_cmd=$2
+    if ! command -v $cmd &> /dev/null; then
+        echo "Installing $cmd..."
+        eval $install_cmd
+    else
+        echo "$cmd is already installed."
+    fi
 }
 
 # Function to prompt the user for input and store it in a variable
@@ -13,212 +20,204 @@ prompt_for_input() {
     export $input_variable
 }
 
-# Prompt for ADMIN_ACCESS_ID early
-prompt_for_input "Enter ADMIN_ACCESS_ID, this is the admin access id of your gateway.  create an Azure AD Auth method in console if you don't have one" ADMIN_ACCESS_ID
+# Install necessary tools
+install_if_missing docker "sudo apt update && sudo apt -y install docker.io && sudo usermod -aG docker ${USER}"
+install_if_missing docker-compose "sudo apt -y install docker-compose"
+install_if_missing az "sudo apt-get update && sudo apt-get install ca-certificates curl apt-transport-https lsb-release gnupg -y && curl -sL https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add - && echo 'deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $(lsb_release -cs) main' | sudo tee /etc/apt/sources.list.d/azure-cli.list && sudo apt-get update && sudo apt-get install azure-cli -y"
+install_if_missing yq "sudo apt-get update -y && sudo apt-get install -y wget && sudo wget https://github.com/mikefarah/yq/releases/download/v4.13.0/yq_linux_amd64 -O /usr/bin/yq && sudo chmod +x /usr/bin/yq"
+install_if_missing nc "sudo apt update && sudo apt -y install netcat"
 
-# Define OS_MACHINE and CLI paths
-OS_MACHINE="$(uname -s)_$(uname -m)"
+# Prompt for inputs
+prompt_for_input "Enter ADMIN_ACCESS_ID (admin access ID of your gateway): " ADMIN_ACCESS_ID
+prompt_for_input "Enter SAML or OIDC access-id (create one in Akeyless console if you don't have one): " SAML_ACCESS_ID
+prompt_for_input "Enter POSTGRESQL_PASSWORD: " POSTGRESQL_PASSWORD
+prompt_for_input "Enter POSTGRESQL_USERNAME: " POSTGRESQL_USERNAME
+prompt_for_input "Enter database target name: " DB_TARGET_NAME
+
+# Define constants
 CLI_PATH="${HOME}/.akeyless/bin"
 CLI="$CLI_PATH/akeyless"
+OUTPUT_FILE="docker-compose.yml"
+NETWORK_NAME="akeyless-network"
+GATEWAY_PORT="8000"
+DOCKER_IMAGE_AKEYLESS="akeyless/base:latest-akeyless"
+DOCKER_IMAGE_CUSTOM_SERVER="akeyless/custom-server"
+DOCKER_IMAGE_ZTBASTION="akeyless/zero-trust-bastion:latest"
+DOCKER_IMAGE_POSTGRESQL="bitnami/postgresql:latest"
+DOCKER_IMAGE_GRAFANA="bitnami/grafana:latest"
+ROTATION_HOUR="9"
 
-# Function to download and install Akeyless CLI if not present
-download_and_install_akeyless() {
-    mkdir -p "$CLI_PATH"
-    case $OS_MACHINE in
-        "Linux_x86_64")
-            URL="https://akeyless-cli.s3.us-east-2.amazonaws.com/cli/latest/production/cli-linux-amd64"
-            curl -o "$CLI" "$URL" >/dev/null 2>&1
-            ;;
-        "Linux_aarch64")
-            URL="https://akeyless-cli.s3.us-east-2.amazonaws.com/cli/latest/production/cli-linux-arm64"
-            curl -o "$CLI" "$URL" >/dev/null 2>&1
-            ;;
-        "Darwin_x86_64"|"Darwin_arm64")
-            if ! command -v akeyless &> /dev/null; then
-                brew install akeyless >/dev/null 2>&1
-            fi
-            ;;
-    esac
-    chmod +x "$CLI" >/dev/null 2>&1
-    "$CLI" --init >/dev/null 2>&1
-}
+# Install Akeyless CLI if missing
+install_if_missing akeyless "mkdir -p '$CLI_PATH' && curl -o '$CLI' 'https://akeyless-cli.s3.us-east-2.amazonaws.com/cli/latest/production/cli-linux-$(uname -m)' && chmod +x '$CLI' && '$CLI' --init"
 
-# Check if Akeyless CLI exists and download if not
-if [ ! -f "$CLI" ] || ! command -v akeyless &> /dev/null; then
-    download_and_install_akeyless
-    profile_file="${HOME}/.$(basename $SHELL)rc"
-    grep -q "$CLI_PATH" "$profile_file" || echo "export PATH=\$PATH:$CLI_PATH" >> "$profile_file"
-fi
-
-source /home/azureuser/.bashrc
-
-# Configure CLI profile
+# Configure Akeyless CLI
 "$CLI" configure --access-type azure_ad --access-id=$ADMIN_ACCESS_ID >/dev/null 2>&1
 
-# Update and install Docker if not installed
-if ! is_installed docker; then
-    sudo apt update
-    sudo apt -y install docker.io
-    sudo usermod -aG docker ${USER}
-else
-    echo "Docker is already installed."
-fi
-
-# Update and install Docker Compose if not installed
-if ! is_installed docker-compose; then
-    sudo apt -y install docker-compose
-else
-    echo "Docker Compose is already installed."
-fi
-
-source /home/azureuser/.bashrc
-
-# Check if Azure CLI is installed
-if ! is_installed az; then
-    echo "Azure CLI not found. Installing..."
-    sudo apt-get update
-    sudo apt-get install ca-certificates curl apt-transport-https lsb-release gnupg -y
-    curl -sL https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
-    AZ_REPO=$(lsb_release -cs)
-    echo "deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main" | sudo tee /etc/apt/sources.list.d/azure-cli.list
-    sudo apt-get update
-    sudo apt-get install azure-cli -y
-else
-    echo "Azure CLI is already installed."
-fi
-
-# Log in to Azure
-#echo "Logging in to Azure..."
-#az login --use-device-code
-
-# Get the Tenant ID
-echo "Fetching Tenant ID..."
-TENANT_ID=$(az account show --query tenantId --output tsv)
-
-# Display the Tenant ID
-echo "Your Azure Tenant ID is: $TENANT_ID"
-
-# Prompt for Docker Hub login
-echo "Please log in to Docker Hub:"
-sudo docker login
-
-# Prompt the user for additional values
-prompt_for_input "Enter SAML or OIDC access-id.  Create one in akeyless console if you don't have one" SAML_ACCESS_ID
-prompt_for_input "Enter POSTGRESQL_PASSWORD" POSTGRESQL_PASSWORD
-prompt_for_input "Enter POSTGRESQL_USERNAME" POSTGRESQL_USERNAME
-
-# Define the path to save the docker-compose.yml file
-output_file="docker-compose.yml"
-
-# Create the docker-compose.yml file using a heredoc
-cat << EOF > $output_file
+# Generate docker-compose.yml
+cat << EOF > $OUTPUT_FILE
 version: '3.8'
 networks:
-  akeyless-network:
+  $NETWORK_NAME:
+    external: true
 services:
   Akeyless-Gateway:
-    image: akeyless/base:latest-akeyless
+    image: $DOCKER_IMAGE_AKEYLESS
     container_name: akeyless-gateway
     ports:
-      - 8000:8000
-      - 8200:8200
-      - 18888:18888
-      - 8080:8080
-      - 8081:8081
-      - 5696:5696
+      - "$GATEWAY_PORT:$GATEWAY_PORT"
+      - "8200:8200"
+      - "18888:18888"
+      - "8080:8080"
+      - "8081:8081"
+      - "5696:5696"
     environment:
-      - CLUSTER_NAME=akeyless-lab
-      - ADMIN_ACCESS_ID=${ADMIN_ACCESS_ID}
-      - 'ALLOWED_ACCESS_PERMISSIONS=[ {"name": "Administrators", "access_id": "${SAML_ACCESS_ID}", "permissions": ["admin"]}]'
+      CLUSTER_NAME: akeyless-lab
+      ADMIN_ACCESS_ID: ${ADMIN_ACCESS_ID}
+      ALLOWED_ACCESS_PERMISSIONS: '[ {"name": "Administrators", "access_id": "${SAML_ACCESS_ID}", "permissions": ["admin"]}]'
     networks:
-      - akeyless-network
-  Custom-Server:
-    image: akeyless/custom-server
+      - $NETWORK_NAME
+  custom-server:
+    image: $DOCKER_IMAGE_CUSTOM_SERVER
     container_name: custom-server
     ports:
-      - 2608:2608
+      - "2608:2608"
     volumes:
       - $PWD/custom_logic.sh:/custom_logic.sh
     environment:
-      - GW_ACCESS_ID=${ADMIN_ACCESS_ID}
+      GW_ACCESS_ID: ${ADMIN_ACCESS_ID}
     restart: unless-stopped
     networks:
-      - akeyless-network
+      - $NETWORK_NAME
   zero-trust-bastion:
-    image: akeyless/zero-trust-bastion:latest
+    image: $DOCKER_IMAGE_ZTBASTION
     container_name: akeyless-lab-web-bastion
     ports:
-      - 8888:8888
+      - "8888:8888"
     environment:
-      - AKEYLESS_GW_URL=https://rest.akeyless.io
-      - PRIVILEGED_ACCESS_ID=${ADMIN_ACCESS_ID}
-      - ALLOWED_ACCESS_IDS=${SAML_ACCESS_ID}
-      - CLUSTER_NAME=akeyless-lab-sra
+      AKEYLESS_GW_URL: https://rest.akeyless.io
+      PRIVILEGED_ACCESS_ID: ${ADMIN_ACCESS_ID}
+      ALLOWED_ACCESS_IDS: ${SAML_ACCESS_ID}
+      CLUSTER_NAME: akeyless-lab-sra
     restart: unless-stopped
     networks:
-      - akeyless-network
-#  ZTWA-Dispatcher:
-#    image: akeyless/zero-trust-web-dispatcher
-#    ports:
-#      - 9000:9000
-#      - 19414:19414
-#    volumes:
-#      - $PWD/shared:/etc/shared
-#    environment:
-#      - CLUSTER_NAME=akeyless-lab-sra
-#      - SERVICE_DNS=worker
-#      - AKEYLESS_GW_URL=https://rest.akeyless.io
-#      - PRIVILEGED_ACCESS_ID=${ADMIN_ACCESS_ID}
-#      - ALLOWED_ACCESS_IDS=[${SAML_ACCESS_ID}]
-#      - ALLOW_INTERNAL_AUTH=false
-#      - DISABLE_SECURE_COOKIE=true
-#      - WEB_PROXY_TYPE=http
-#    networks:
-#      - akeyless-network
-
+      - $NETWORK_NAME
   postgresql:
-    image: bitnami/postgresql:latest
+    image: $DOCKER_IMAGE_POSTGRESQL
     container_name: postgresql
     ports:
-      - 5432:5432
+      - "5432:5432"
     environment:
-      - POSTGRESQL_PASSWORD=${POSTGRESQL_PASSWORD}
-      - POSTGRESQL_USERNAME=${POSTGRESQL_USERNAME}
+      POSTGRESQL_PASSWORD: ${POSTGRESQL_PASSWORD}
+      POSTGRESQL_USERNAME: ${POSTGRESQL_USERNAME}
     networks:
-      - akeyless-network
-
+      - $NETWORK_NAME
   grafana:
-    image: bitnami/grafana:latest
+    image: $DOCKER_IMAGE_GRAFANA
     container_name: grafana
     ports:
-      - 3000:3000
+      - "3000:3000"
     networks:
-      - akeyless-network
-
+      - $NETWORK_NAME
 EOF
 
-echo "docker-compose.yml file has been generated at $output_file."
+echo "docker-compose.yml file has been generated at $OUTPUT_FILE."
+
+# Kill existing docker containers
+sudo docker stop $(sudo docker ps -aq) >/dev/null 2>&1
+sudo docker rm $(sudo docker ps -aq) >/dev/null 2>&1
+
+# Create docker network if it doesn't exist
+sudo docker network create $NETWORK_NAME || echo "Network $NETWORK_NAME already exists."
 
 # Run docker-compose up -d
 sudo docker-compose up -d
-
 echo "Docker containers are being started in detached mode."
 
 # Wait for the containers to be up and running
 echo "Waiting for the containers to be up and running..."
-sleep 30
+services=$(yq e '.services | keys' $OUTPUT_FILE | sed 's/- //g')
+for service in $services; do
+    echo "Checking service: $service"
+    while ! [ "$(docker-compose ps -q $service)" ] || ! [ "$(docker inspect -f '{{.State.Running}}' $(docker-compose ps -q $service))" == "true" ]; do
+        echo "Waiting for $service to start..."
+        sleep 5
+    done
+    echo "$service is up and running"
+done
 
-# Find the IP addresses of the containers
-DB_HOST=$(sudo docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' postgresql)
-GRAFANA_HOST=$(sudo docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' grafana)
-CUSTOM_SERVER_HOST=$(sudo docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' custom-server)
+# Update /etc/hosts with container IPs and hostnames
+for service in $services; do
+    container_name=$(docker inspect --format '{{ .Name }}' $(docker-compose ps -q "$service") | sed 's/^\///')
+    container_ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$container_name")
+    sudo sed -i "/$container_name/d" /etc/hosts
+    echo "$container_ip $container_name" | sudo tee -a /etc/hosts > /dev/null
+done
 
-# Export the IP addresses as environment variables
-export DB_HOST
-export GRAFANA_HOST
-export CUSTOM_SERVER_HOST
+# Set environment variables for hostnames
+export DB_HOST=$(docker inspect --format '{{ .Name }}' $(docker-compose ps -q postgresql) | sed 's/^\///')
+export GRAFANA_HOST=$(docker inspect --format '{{ .Name }}' $(docker-compose ps -q grafana) | sed 's/^\///')
+export CUSTOM_SERVER_HOST=$(docker inspect --format '{{ .Name }}' $(docker-compose ps -q custom-server) | sed 's/^\///')
+export AKEYLESS_GATEWAY_HOST=$(docker inspect --format '{{ .Name }}' $(docker-compose ps -q Akeyless-Gateway) | sed 's/^\///')
 
-# Print the IP addresses for the user
-echo "PostgreSQL IP Address: $DB_HOST"
-echo "Grafana IP Address: $GRAFANA_HOST"
-echo "Custom Server IP Address: $CUSTOM_SERVER_HOST"
+# Check if akeyless-gateway is up
+while ! nc -zv $AKEYLESS_GATEWAY_HOST $GATEWAY_PORT; do
+    echo "Waiting for akeyless-gateway to be up on port $GATEWAY_PORT..."
+    sleep 10
+done
+
+# Target cleanup
+akeyless target delete --name "/Sandbox/1 - Databases/${DB_TARGET_NAME}"
+
+# Configure DB Target
+akeyless target create db \
+--name "/Sandbox/1 - Databases/${DB_TARGET_NAME}" \
+--db-type postgres \
+--pwd $POSTGRESQL_PASSWORD  \
+--host $DB_HOST \
+--port 5432 \
+--user-name $POSTGRESQL_USERNAME \
+--db-name postgres
+
+# Rotate default DB password
+akeyless rotated-secret create postgresql \
+--name "/Sandbox/3 - Rotated/1 - Databases/${DB_TARGET_NAME}-rotate" \
+--gateway-url "http://${AKEYLESS_GATEWAY_HOST}:${GATEWAY_PORT}" \
+--target-name "/Sandbox/1 - Databases/${DB_TARGET_NAME}" \
+--authentication-credentials use-target-creds \
+--password-length 16 \
+--rotator-type target \
+--auto-rotate true \
+--rotation-interval 1 \
+--rotation-hour $ROTATION_HOUR
+
+# Define the SQL statements for creating and revoking users
+POSTGRESQL_STATEMENTS=$(cat <<EOF
+CREATE USER "{{name}}" WITH PASSWORD '{{password}}';
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO "{{name}}";
+GRANT CONNECT ON DATABASE postgres TO "{{name}}";
+GRANT USAGE ON SCHEMA public TO "{{name}}";
+EOF
+)
+
+POSTGRESQL_REVOKE_STATEMENT=$(cat <<EOF
+REASSIGN OWNED BY "{{name}}" TO {{userHost}};
+DROP OWNED BY "{{name}}";
+SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = '{{name}}';
+DROP USER "{{name}}";
+EOF
+)
+
+# Create Database Dynamic Secret
+akeyless dynamic-secret create postgresql \
+--name "/Sandbox/4 - Dynamic/${DB_TARGET_NAME}-dynamic" \
+--target-name "/Sandbox/1 - Databases/${DB_TARGET_NAME}" \
+--gateway-url "http://${AKEYLESS_GATEWAY_HOST}:${GATEWAY_PORT}" \
+--postgresql-statements "$POSTGRESQL_STATEMENTS" \
+--postgresql-revoke-statement "$POSTGRESQL_REVOKE_STATEMENT" \
+--password-length 16
+
+# Print the hostnames for the user
+echo "PostgreSQL Hostname: $DB_HOST"
+echo "Grafana Hostname: $GRAFANA_HOST"
+echo "Custom Server Hostname: $CUSTOM_SERVER_HOST"
+echo "Akeyless Gateway Hostname: $AKEYLESS_GATEWAY_HOST"
