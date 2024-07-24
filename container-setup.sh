@@ -190,32 +190,59 @@ akeyless rotated-secret create postgresql \
 --rotation-interval 1 \
 --rotation-hour $ROTATION_HOUR
 
-# Define the SQL statements for creating and revoking users
-POSTGRESQL_STATEMENTS=$(cat <<EOF
-CREATE USER "{{name}}" WITH PASSWORD '{{password}}';
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO "{{name}}";
-GRANT CONNECT ON DATABASE postgres TO "{{name}}";
-GRANT USAGE ON SCHEMA public TO "{{name}}";
+# Define the SQL statements for creating Super users and Read_Only
+read -r -d '' POSTGRESQL_STATEMENTS_SU <<'EOF'
+CREATE ROLE "{{name}}" WITH SUPERUSER CREATEDB CREATEROLE LOGIN ENCRYPTED PASSWORD '{{password}}';
 EOF
-)
 
-POSTGRESQL_REVOKE_STATEMENT=$(cat <<EOF
+read -r -d '' POSTGRESQL_REVOKE_STATEMENT_SU <<'EOF'
 REASSIGN OWNED BY "{{name}}" TO {{userHost}};
 DROP OWNED BY "{{name}}";
 SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = '{{name}}';
 DROP USER "{{name}}";
 EOF
-)
 
-# Create Database Dynamic Secret
-akeyless dynamic-secret create postgresql \
---name "/Sandbox/4 - Dynamic/${DB_TARGET_NAME}-dynamic" \
---target-name "/Sandbox/1 - Databases/${DB_TARGET_NAME}" \
---gateway-url "http://${AKEYLESS_GATEWAY_HOST}:${GATEWAY_PORT}" \
---postgresql-statements "$POSTGRESQL_STATEMENTS" \
---postgresql-revoke-statement "$POSTGRESQL_REVOKE_STATEMENT" \
---password-length 16
+read -r -d '' POSTGRESQL_STATEMENTS_RO <<'EOF'
+CREATE USER "{{name}}" WITH PASSWORD '{{password}}';
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO "{{name}}";
+GRANT CONNECT ON DATABASE postgres TO "{{name}}";
+GRANT USAGE ON SCHEMA public TO "{{name}}";
+EOF
 
+read -r -d '' POSTGRESQL_REVOKE_STATEMENT_RO <<'EOF'
+REASSIGN OWNED BY "{{name}}" TO {{userHost}};
+DROP OWNED BY "{{name}}";
+SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = '{{name}}';
+DROP USER "{{name}}";
+EOF
+
+# Function to create a dynamic secret
+create_dynamic_secret() {
+    local secret_name=$1
+    local db_target_name=$2
+    local statements=$3
+    local revoke_statement=$4
+
+    akeyless dynamic-secret create postgresql \
+    --name "/Sandbox/4 - Dynamic/${db_target_name}-${secret_name}-dynamic" \
+    --target-name "/Sandbox/1 - Databases/${db_target_name}" \
+    --gateway-url "http://${AKEYLESS_GATEWAY_HOST}:${GATEWAY_PORT}" \
+    --postgresql-statements "$statements" \
+    --postgresql-revoke-statement "$revoke_statement" \
+    --password-length 16
+}
+
+# Create Super User DB Dynamic Secret
+create_dynamic_secret "su" "${DB_TARGET_NAME}" "$POSTGRESQL_STATEMENTS_SU" "$POSTGRESQL_REVOKE_STATEMENT_SU"
+
+# Create Read_only DB Dynamic Secret
+create_dynamic_secret "ro" "${DB_TARGET_NAME}" "$POSTGRESQL_STATEMENTS_RO" "$POSTGRESQL_REVOKE_STATEMENT_RO"
+
+
+# Create dynamic secrets for roles
+for role in "${!SQL_STATEMENTS[@]}"; do
+    create_dynamic_secret "$role" "${SQL_STATEMENTS[$role]}" "${REVOKE_STATEMENTS[$role]}"
+done
 # Print the hostnames for the user
 echo "PostgreSQL Hostname: $DB_HOST"
 echo "Grafana Hostname: $GRAFANA_HOST"
