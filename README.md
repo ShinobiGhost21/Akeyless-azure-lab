@@ -1,9 +1,9 @@
 # Akeyless-azure-lab
-A docker based Akeyless lab in Azure
+* A docker based Akeyless lab in Azure
 
 ## Pre-requsite
-Register for a free Akeyless account: console.akeyless.io
-Have an active Azure AD subscription: you will need this to create VM
+* Register for a free Akeyless account: console.akeyless.io
+* Have an active Azure AD subscription: you will need this to create VM
 
 ## Nice-to-have
 SAML / OIDC auth method: you'll use this for login to the UI and CLI access. --> https://docs.akeyless.io/docs/saml
