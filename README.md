@@ -10,8 +10,8 @@ SAML / OIDC auth method: you'll use this for login to the UI and CLI access. -->
 
 ## Steps
 * have your azure login info ready
-* have your Akeyless SAML and gateawy access-ids ready
-* Close the repo locally and run the azure install script
+* have your Akeyless SAML and Gateway access-ids ready
+* Clone the repo locally and run the azure install script
 
 ## Outcomes
 * Creates an Azure VM with managed identity
