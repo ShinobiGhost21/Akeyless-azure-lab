@@ -1,7 +1,7 @@
 # Akeyless-azure-lab
 * A docker based Akeyless lab in Azure
 
-## Pre-requsite
+## Pre-requisite
 * Register for a free Akeyless account: console.akeyless.io
 * Have an active Azure AD subscription: you will need this to create VM
 
