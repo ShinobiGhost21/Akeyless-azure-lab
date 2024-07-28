@@ -2,15 +2,11 @@
 A docker based Akeyless lab in Azure
 
 ## Pre-requsite
-* register for a free Akeyless account: console.akeyless.io
-* Active Azure AD subscription:  you will need this to create VM
+Register for a free Akeyless account: console.akeyless.io
+Have an active Azure AD subscription: you will need this to create VM
 
 ## Nice-to-have
-* SAML / OIDC auth method:  you'll use this for login to the UI and CLI access. -->  https://docs.akeyless.io/docs/saml
-* Azure AD auth method:  you'll use this auth method to authenticate the akeyless gateway in your Azure VM to your account --> https://docs.akeyless.io/docs/azure-ad
-* Access roles:  Authorize both the Azure AD auth method and your SAML to access items and targets in your account --> https://docs.akeyless.io/docs/rbac | https://tutorials.akeyless.io/docs/role-based-access-control-with-api-key-authentication
-* Linux or MacOS
-
+SAML / OIDC auth method: you'll use this for login to the UI and CLI access. --> https://docs.akeyless.io/docs/saml
 
 ## Steps
 * have your azure login info ready
@@ -24,7 +20,6 @@ A docker based Akeyless lab in Azure
 * Custom-server will be used for creating dynamic / rotated secret objects for custom and non-supported applications e.g. Grafana
 * Configures Akeyelss components: Gateway, Auth Methods, Access-Roles, Gateway Permissions
 * Creates Secret items: Static, Encryption, Rotated, Dynamic-Read-only, and Dynamic-Super-User
-
 
 ## To Do
 * SSH Cert issuer for Certificate based SSH access to Linux Machines
