@@ -33,3 +33,4 @@ A docker based Akeyless lab in Azure
 * Gateway metrics
 * Gateway Migration
 * Universal Secrets Connector (Azure Key Vault, Hashi, AWS, GCP, K8s)
+* Azure DevOps integration
