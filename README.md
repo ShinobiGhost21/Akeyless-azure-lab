@@ -27,10 +27,10 @@ A docker based Akeyless lab in Azure
 
 
 ## To Do
-* SSH Cert issuer for Certificate based SSH access
-* Linux container to use as SSH Target
-* Custom Producer for Grafana web server
-* Gateway metrics
-* Gateway Migration
-* Universal Secrets Connector (Azure Key Vault, Hashi, AWS, GCP, K8s)
-* Azure DevOps integration
+* SSH Cert issuer for Certificate based SSH access to Linux Machines
+* Configure Linux container to use as SSH Target
+* Configure Custom Producer for Grafana web server
+* Configure Gateway metrics
+* Configure Automatic Migration?
+* Configure Universal Secrets Connector (Azure Key Vault, Hashi, AWS, GCP, K8s)
+* Configure Azure DevOps integration
