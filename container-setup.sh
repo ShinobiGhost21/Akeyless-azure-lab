@@ -2,7 +2,7 @@
 
 env_file="env.vars"
 
-#source env.vars
+source env.vars
 
 # Define constants
 LAB_ID=$RESOURCE_GROUP
