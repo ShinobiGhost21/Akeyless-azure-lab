@@ -22,10 +22,13 @@ SAML / OIDC auth method: you'll use this for login to the UI and CLI access. -->
 * Creates Secret items: Static, Encryption, Rotated, Dynamic-Read-only, and Dynamic-Super-User
 
 ## To Do
+* Configure DFC / Customer Fragment
 * SSH Cert issuer for Certificate based SSH access to Linux Machines
 * Configure Linux container to use as SSH Target
 * Configure Custom Producer for Grafana web server
 * Configure Gateway metrics
+* Configure Ingress
 * Configure Automatic Migration?
 * Configure Universal Secrets Connector (Azure Key Vault, Hashi, AWS, GCP, K8s)
 * Configure Azure DevOps integration
+* Convert to Azure Container services rather than running on VM
